@@ -1,0 +1,7 @@
+# Ignore everything ...
+*
+# ... except folders, python files, and this file
+!*/
+!*.py
+!.gitignore
+__pycache__/
