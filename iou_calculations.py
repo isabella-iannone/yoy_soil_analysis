@@ -10,8 +10,7 @@ import shapely
 
 def iou_calc(camp_fields):
 
-
-
+    # print(camp_fields)
     # making the pandas series into a type of wkt
     camp_fields["geometry"] = camp_fields["geometry_wkt"].apply(wkt.loads)
     ############### test print
@@ -51,7 +50,7 @@ def iou_calc(camp_fields):
 
     # line up the pairs
     g1 = np.asarray(pairs.geometry.values)
-    g2 = np.asarray(pairs.geometry.values)
+    g2 = np.asarray(historical_fields.geometry.loc[pairs["index_2"]].values)
 
 
     # union the pairs
@@ -67,10 +66,16 @@ def iou_calc(camp_fields):
     # the calculated iou
     pairs["iou"] = pairs["acres_overlap"] / pairs["acres_union"]
     # drop the duplicate union values
-    pairs = pairs.drop(columns="index_2").reset_index(drop=True)
+    pairs = pairs.drop(columns=["index_2","geometry", "acres_union", "acres_overlap"]).reset_index(drop=True)
 
     # print(pairs)
-    pairs_table = pairs.drop(columns=["geometry", "acres_union", "acres_overlap"])
+    pairs.insert(2, 'Relationship', "")
+    pairs.insert(0, 'Ignore', "")
+    pairs.insert(3, 'campaign_id_1', campaign_ids[0])
+    pairs.insert(5, 'campaign_id_2', campaign_ids[1])
+    # print(pairs)
+    pairs_table = pairs
+
     return pairs_table
 
 

@@ -28,11 +28,6 @@ def load_data(fields_path, data_path):
 def get_pairs(camp_fields):
     return iou_calculations.iou_calc(camp_fields)
 
-# @st.cache_data
-# def get_map(camp_fields):
-#     return map_vis.create_map(camp_fields)
-
-
 
 
 def main():
@@ -45,7 +40,7 @@ def main():
 
     field_map = map_vis.create_map(camp_fields)
 
-    streamlit_app_proto.create_app(field_map, pairs_table)
+    streamlit_app_proto.create_app(field_map, pairs_table, camp_fields, camp_data)
 
 
 if __name__ == "__main__":
