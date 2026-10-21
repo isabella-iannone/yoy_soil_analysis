@@ -3,19 +3,20 @@ from streamlit_folium import st_folium
 import map_vis
 
 # Take in the map that was created in map_vis, pairs of all IOU that are not duplicates, fields list with ID and name together, and data to run analysis on
-def create_app(map, pairs_table, camp_fields, camp_data):
+def create_app(pairs_table, camp_fields, camp_data):
     st.write("""
     # DRAFT*""")
     st.title("Year or Year Analysis")
     st.subheader("Map of Campaigns")
 
-    st_data = st_folium(map, use_container_width=True, height=500, width=600)
+    st_folium(map_vis.create_map(camp_fields), height=500)
+
 
     # setting what columns can be ignored
     ignore_cols = ["field_id_1", "field_id_2", "campaign_name_1", "campaign_name_2", "campaign_id_1", "campaign_id_2"]
     config = {col: None for col in ignore_cols}
     # number 1 is the campaign that was the most recent 
-    # change_headers = {"field_name_1": f"{pairs_table['campaign_name_1'].iloc[0]}", "field_name_2": f"{pairs_table['campaign_name_2'].iloc[0]}", "iou": "IOU"}
+    change_headers = {"iou": "IOU"}
 
     camp_fields["field_label"] = camp_fields["field_name"].astype(str)
     # camp_fields["field_label"] = camp_fields["field_id"].astype(str) + "(#" + camp_fields["field_id"].astype(str) + ")"
@@ -37,7 +38,7 @@ def create_app(map, pairs_table, camp_fields, camp_data):
                     pairs_table,
                     column_config={
                         **config,
-                        # **change_headers, 
+                        **change_headers, 
                         "Ignore": st.column_config.SelectboxColumn(
                                 "Ignore",
                                 help="Select fields to ignore",
@@ -69,6 +70,9 @@ def create_app(map, pairs_table, camp_fields, camp_data):
                     disabled= ["iou"],
                     hide_index=True,
                 )
+
+
+        
 
 
     # once every relationship and each field from each campaign is captured have a save button green in

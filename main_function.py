@@ -1,7 +1,7 @@
 # Main function for year over year analysis
 import sys
 import iou_calculations
-import map_vis
+# import map_vis
 import streamlit_app_proto
 import os
 import pandas as pd
@@ -38,9 +38,9 @@ def main():
     pairs_table = get_pairs(camp_fields)
     print(pairs_table)
 
-    field_map = map_vis.create_map(camp_fields)
+    # field_map = map_vis.create_map(camp_fields)
 
-    streamlit_app_proto.create_app(field_map, pairs_table, camp_fields, camp_data)
+    streamlit_app_proto.create_app(pairs_table, camp_fields, camp_data)
 
 
 if __name__ == "__main__":

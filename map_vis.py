@@ -39,6 +39,9 @@ def create_map(camp_fields):
     # map tiles that are being used
     m = folium.Map(tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                 attr="Tiles &copy; Esri")
+    m.get_root().header.add_child(folium.Element(
+        "<style>.leaflet-interactive:focus { outline: none; }</style>"
+    ))
 
     dashes = [None, "8 4", "2 4", "12 4 2 4", "1 6"]
     angles = [45, -45, 0, 90, 30, -30, 60, -60, 15, -15]
@@ -101,7 +104,7 @@ def create_map(camp_fields):
         tree["children"].append(campaign_node)
 
     # adds the collapsed legend to the map 
-    TreeLayerControl(overlay_tree=tree).add_to(m)
+    TreeLayerControl(overlay_tree=tree, collapsed=False).add_to(m)
 
     # zoom to the fit of the fields
     lats = [b[0] for b in all_bounds]
