@@ -5,31 +5,48 @@ import map_vis
 import streamlit_app_proto
 import os
 import pandas as pd
+import streamlit as st
 from shapely.geometry import Polygon
 
 #  geojson data
-camp_fields = pd.read_csv(r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_year_test.csv')
+FIELDS_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_year_test.csv'
 
 # field data
-camp_data = pd.read_csv(r'C:\Users\isabe\year_or_year_testing_info\field_data_year_or_year_test.csv')
+DATA_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_data_year_or_year_test.csv'
+
+st.set_page_config(page_title="Year over year field matching", layout="wide")
+
+# cache setup
+# only re-run when there are changes made
+@st.cache_data
+def load_data(fields_path, data_path): 
+    camp_fields = pd.read_csv(fields_path)
+    camp_data = pd.read_csv(data_path)
+    return camp_fields, camp_data
+
+@st.cache_data
+def get_pairs(camp_fields):
+    return iou_calculations.iou_calc(camp_fields)
+
+# @st.cache_data
+# def get_map(camp_fields):
+#     return map_vis.create_map(camp_fields)
+
+
 
 
 def main():
     print("Main function")
     # Getting the pairs table
-    pairs_table = iou_calculations.iou_calc(camp_fields)
+
+    camp_fields, camp_data = load_data(FIELDS_PATH, DATA_PATH)
+    pairs_table = get_pairs(camp_fields)
     print(pairs_table)
-    # creating the map
-    map = map_vis.create_map(camp_fields)
-    # print(type(map))
-    streamlit_app_proto.create_app(map)
 
+    field_map = map_vis.create_map(camp_fields)
 
+    streamlit_app_proto.create_app(field_map, pairs_table)
 
-    # # # where the map is being saved
-    # output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carbon_map_test.html")
-    # map.save(output_path)
-    # os.startfile(output_path)
 
 if __name__ == "__main__":
     main()

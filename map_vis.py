@@ -5,6 +5,7 @@
 import folium
 from folium.plugins import TreeLayerControl
 import json
+from folium.plugins.pattern import StripePattern
 import branca.colormap as cm
 # import os
 
@@ -39,6 +40,11 @@ def create_map(camp_fields):
     m = folium.Map(tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                 attr="Tiles &copy; Esri")
 
+    dashes = [None, "8 4", "2 4", "12 4 2 4", "1 6"]
+    angles = [45, -45, 0, 90, 30, -30, 60, -60, 15, -15]
+
+
+
 
     # palette to use for the map
     palette = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
@@ -56,8 +62,19 @@ def create_map(camp_fields):
         # select color for campaign from palette
             # if more campaign than colors will start back at the begining of the palette
         color = palette[i % len(palette)]
-        # swatch color in tyhe HTML
-        swatch = f'<span style="display:inline-block;width:12px;height:12px;background:{color};margin-right:6px;border:1px solid #333"></span>'
+        striped = i % 2 == 1
+        dash = "8 4" if striped else None
+        if striped:
+            pattern = StripePattern(angle=angles[i % len(angles)], color=color, weight=2, space_weight=6, opacity=0.9, space_opacity=0)
+            pattern.add_to(m)
+            fill = {"fillPattern": pattern, "fillOpacity": 1.0}
+            swatch_bg = f"repeating-linear-gradient(45deg,{color} 0 2px,transparent 2px 6px)"
+        else:
+            fill = {"fillColor": color, "fillOpacity": 0.3}
+            swatch_bg = color
+        style = {"color": color, "weight": 2 if striped else 5, "dashArray": dash, **fill}
+        border = "dashed" if striped else "solid"
+        swatch = f'<span style="display:inline-block;width:14px;height:14px;margin-right:6px;border:2px {border} {color};background:{swatch_bg}"></span>'
 
         # Color box, checkbox, start with campaigns folded, and adds the fields as the children for each campaign
         campaign_node = {"label": f"{swatch}{campaign_name}", "select_all_checkbox": True, "collapsed": True, "children": []}
@@ -71,7 +88,7 @@ def create_map(camp_fields):
                 # labels the polygon with the field name
                 name=f["field_name"],
                 # styling of the polygon
-                style_function=lambda x, c=color: {"color": c, "weight": 3, "fillColor": c, "fillOpacity": 0.15},
+                style_function=lambda x, s=style: dict(s),
                 # shows the name of the field when it is hovered over 
                 tooltip=f"{f['field_name']} ({campaign_name})",
                 # all this is than added to the map
