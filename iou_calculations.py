@@ -69,7 +69,7 @@ def iou_calc(camp_fields):
     pairs = pairs.drop(columns=["index_2","geometry", "acres_union", "acres_overlap"]).reset_index(drop=True)
 
     # print(pairs)
-    pairs.insert(2, 'Relationship', "")
+    pairs.insert(2, 'Relationship', np.where(pairs["iou"]>=0.85, "1:1", None))
     pairs.insert(0, 'Ignore', "")
     pairs.insert(3, 'campaign_id_1', campaign_ids[0])
     pairs.insert(5, 'campaign_id_2', campaign_ids[1])

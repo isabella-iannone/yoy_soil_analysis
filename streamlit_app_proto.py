@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import map_vis
+import pandas as pd
 
 # Take in the map that was created in map_vis, pairs of all IOU that are not duplicates, fields list with ID and name together, and data to run analysis on
 def create_app(pairs_table, camp_fields, camp_data):
@@ -9,8 +10,14 @@ def create_app(pairs_table, camp_fields, camp_data):
     st.title("Year or Year Analysis")
     st.subheader("Map of Campaigns")
 
+    MATCHES_PATH = r'C:\Users\isabe\year_or_year_testing_info\matches.csv'
+
     st_folium(map_vis.create_map(camp_fields), height=500)
 
+
+    pairs_table = pairs_table.copy()
+    pairs_table["field_name_1"] = pairs_table["field_name_1"].astype(str).apply(lambda v: [v])
+    pairs_table["field_name_2"] = pairs_table["field_name_2"].astype(str).apply(lambda v: [v])
 
     # setting what columns can be ignored
     ignore_cols = ["field_id_1", "field_id_2", "campaign_name_1", "campaign_name_2", "campaign_id_1", "campaign_id_2"]
@@ -27,13 +34,7 @@ def create_app(pairs_table, camp_fields, camp_data):
     hist_rows = camp_fields[camp_fields["campaign_id"] == campaign_id_2]
     camp_2_field_options = hist_rows["field_label"].tolist()
 
-
-
-    #TODO not sure where this functionality should go but if the iou is greater than >.85 than the automatic relationship should be 1:1
-    #TODO only have good IOU pre-populate
-    #TODO if ignore is selected than clear the second campaign fields from that row
-
-
+   
     new_table = st.data_editor(
                     pairs_table,
                     column_config={
@@ -71,8 +72,49 @@ def create_app(pairs_table, camp_fields, camp_data):
                     hide_index=True,
                 )
 
+    ids_1 = dict(zip(camp_rows["field_label"], camp_rows["field_id"]))
+    ids_2 = dict(zip(hist_rows["field_label"], hist_rows["field_id"]))
 
-        
+    records = []
+
+    # print("FIELD CHECK:", type(new_table["field_name_1"].iloc[0]), new_table["field_name_1"].iloc[0])
+
+    for group_id, row in new_table.iterrows():
+        for campaign_id, names, ids in [(campaign_id_1, row["field_name_1"], ids_1), (campaign_id_2, row["field_name_2"], ids_2)]:
+            for name in names or []:
+                records.append({"group_id": f"{campaign_id_1}-{campaign_id_2}-{group_id}", "campaign_id": campaign_id, "field_id": ids[name], "relationship": row["Relationship"], "ignore": row["Ignore"]})
+    matches = pd.DataFrame(records)
+
+    # make sure each field from each campaign is accounted for 
+
+    used = set(matches["field_id"]) if not matches.empty else set()
+    missing_1 = camp_rows.loc[~camp_rows["field_id"].isin(used), "field_label"].tolist()
+    missing_2 = hist_rows.loc[~hist_rows["field_id"].isin(used), "field_label"].tolist()
+    twice = matches[matches.duplicated(["campaign_id", "field_id"])] if not matches.empty else matches
+
+    id_to_label = dict(zip(camp_fields["field_id"], camp_fields["field_label"]))
+    campaign_names = dict(zip(camp_fields["campaign_id"], camp_fields["campaign_name"]))
+
+    problems = []
+    if missing_1:
+        problems.append(f"Not matched in {pairs_table['campaign_name_1'].iloc[0]}: {', '.join(missing_1)}")
+    if missing_2:
+        problems.append(f"Not matched in {pairs_table['campaign_name_2'].iloc[0]}: {', '.join(missing_2)}")
+    if not twice.empty:
+        twice_unique = twice.drop_duplicates(["campaign_id", "field_id"])
+        twice_names = [f"{id_to_label[fid]} ({campaign_names[cid]})" for cid, fid in zip(twice_unique["campaign_id"], twice_unique["field_id"])]
+        problems.append(f"Used in more than one row: {', '.join(twice_names)}") 
+
+
+    if st.button("Confirm Matches"):
+        if problems:
+            st.error("Matches not saved. Every field needs to be matched or ignored first")
+            for problem in problems:
+                st.error(problem)
+        else:
+            matches.to_csv(MATCHES_PATH, index=False)
+            st.success("Matches saved")
+
 
 
     # once every relationship and each field from each campaign is captured have a save button green in

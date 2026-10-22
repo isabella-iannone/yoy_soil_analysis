@@ -7,32 +7,7 @@ from folium.plugins import TreeLayerControl
 import json
 from folium.plugins.pattern import StripePattern
 import branca.colormap as cm
-# import os
 
-# load in the data (this would be after people have selected the campaigns that they want to compare)
-
-# # field data
-# camp_data = pd.read_csv(r'C:\Users\isabe\year_or_year_testing_info\field_data_year_or_year_test.csv')
-
-# #  geojson data
-# camp_fields = pd.read_csv(r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_year_test.csv')
-
-
-# # test prints for loading in data
-# # print(camp_data.head())
-# # print(camp_fields)
-
-
-# # create map 
-
-# # number of campaigns
-# n_camp = len(pd.unique(camp_fields['campaign_id']))
-# print(n_camp)
-# print(pd.unique(camp_fields['campaign_id']))
-
-# # want to store a key value pair of ids and names of fields as well as campaign
-# list_camp_fields = camp_fields.set_index('campaign_field_id')['field_name'].to_dict()
-# print(list_camp_fields)
 
 def create_map(camp_fields):
     # creating the map
@@ -114,10 +89,6 @@ def create_map(camp_fields):
     print(type(m))
 
     return m
-
-    #     output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carbon_map_test.html")
-    # map.save(output_path)
-    # os.startfile(output_path)
 
 
 
