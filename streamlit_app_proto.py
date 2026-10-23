@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import pandas as pd
-
+from config import MATCHES_PATH 
 # Take in the map that was created in map_vis, pairs of all IOU that are not duplicates, fields list with ID and name together, and data to run analysis on
 def create_app(pairs_table, camp_fields, map):
     st.write("""
@@ -9,7 +9,7 @@ def create_app(pairs_table, camp_fields, map):
     st.title("Year or Year Analysis")
     st.subheader("Map of Campaigns")
 
-    MATCHES_PATH = r'C:\Users\isabe\year_or_year_testing_info\matches.csv'
+    # MATCHES_PATH = r'C:\Users\isabe\year_or_year_testing_info\matches.csv'
 
     st_folium(map, height=500)
 
@@ -83,6 +83,7 @@ def create_app(pairs_table, camp_fields, map):
             for name in names or []:
                 records.append({"group_id": f"{campaign_id_1}-{campaign_id_2}-{group_id}", "campaign_id": campaign_id, "field_id": ids[name], "relationship": row["Relationship"], "ignore": row["Ignore"]})
     matches = pd.DataFrame(records)
+    matches["ignore"] = matches["ignore"].replace("", pd.NA)
 
     # make sure each field from each campaign is accounted for 
 

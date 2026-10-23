@@ -53,6 +53,9 @@ def main():
     # load the data once
     fields_gdf, samples_gdf = load_inputs(FIELDS_PATH, DATA_PATH, data_version)
     print(f"{len(fields_gdf)} fields, {len(samples_gdf)} samples loaded")
+    st.session_state["samples_gdf"] = samples_gdf
+    st.session_state["fields_gdf"] = fields_gdf
+    st.sidebar.write("Stored samples:", type(st.session_state.get("samples_gdf")).__name__)
 
 
     pairs_table = get_pairs(fields_gdf, data_version)
@@ -64,6 +67,7 @@ def main():
         create_app(pairs_table, fields_gdf, field_map)
 
     st.sidebar.write("Flag when building pages:", st.session_state.get("matches_saved"))
+    
     pages = [st.Page(home, title="Home", icon="🏠", default=True)]
     if st.session_state.get("matches_saved"):
         pages.append(st.Page("analysis_page.py", title="Analysis", icon="📊"))
