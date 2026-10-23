@@ -14,6 +14,9 @@ def read_fields_csv(path):
 def read_data_csv(path):
     return pd.read_csv(path)
 
+# def read_matches_csv(path):
+#     return pd.read_csv(path)
+
 def _parse_geojson(text):
     geom = json.loads(text)
     if geom.get("type") == "Feature":
@@ -29,7 +32,8 @@ def to_gdf(camp_fields, geom_col="geometry_wkt"):
         )
     geoms = gpd.GeoSeries.from_wkt(camp_fields[geom_col], crs=WGS84)
     gdf = gpd.GeoDataFrame(camp_fields.drop(columns=geom_col), geometry=geoms)
- 
+
+    # TODO not sure about this functionality of this
     # Repair self-intersecting polygons so overlap math doesn't fail later
     invalid = ~gdf.is_valid
     if invalid.any():
@@ -48,3 +52,8 @@ def load_all(fields_path, samples_path, geom_col="geometry"):
     fields_gdf = to_gdf(read_fields_csv(fields_path), geom_col=geom_col)
     samples_gdf = samples_to_gdf(read_data_csv(samples_path))
     return fields_gdf, samples_gdf
+
+# def load_matches(matches_path):
+#     """Reading matches from csv and returning (matches_df)."""
+#     matches_pd = read_data_csv(matches_path)
+#     return matches_pd

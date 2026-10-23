@@ -1,10 +1,9 @@
 import streamlit as st
 from streamlit_folium import st_folium
-import map_vis
 import pandas as pd
 
 # Take in the map that was created in map_vis, pairs of all IOU that are not duplicates, fields list with ID and name together, and data to run analysis on
-def create_app(pairs_table, camp_fields, camp_data):
+def create_app(pairs_table, camp_fields, map):
     st.write("""
     # DRAFT*""")
     st.title("Year or Year Analysis")
@@ -12,7 +11,7 @@ def create_app(pairs_table, camp_fields, camp_data):
 
     MATCHES_PATH = r'C:\Users\isabe\year_or_year_testing_info\matches.csv'
 
-    st_folium(map_vis.create_map(camp_fields), height=500)
+    st_folium(map, height=500)
 
 
     pairs_table = pairs_table.copy()
@@ -111,14 +110,30 @@ def create_app(pairs_table, camp_fields, camp_data):
             st.error("Matches not saved. Every field needs to be matched or ignored first")
             for problem in problems:
                 st.error(problem)
+            st.session_state["matches_saved"] = False
         else:
             matches.to_csv(MATCHES_PATH, index=False)
-            st.success("Matches saved")
+            st.session_state["matches"] = matches
+            st.session_state["matches_saved"] = True
+            st.rerun()
+
+    if st.session_state.get("matches_saved"):
+        st.success("Matches saved")
+        st.page_link("analysis_page.py",
+                     label="Year over Year Analysis of Your Campaigns",
+                     icon="📊")
 
 
 
-    # once every relationship and each field from each campaign is captured have a save button green in
+    # Table with number of samples taken and acres sampled
+        # put in a caveat that this is only looking at the fields that are being included in the yoy analysis
+
+    # Total carbon % heat map ******* need to exclude outliers using the k=3 fence rule
+
+
+
 
     
+
 
 

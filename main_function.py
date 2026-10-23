@@ -2,7 +2,7 @@
 import sys
 import iou_calculations
 import map_vis
-import streamlit_app_proto
+from streamlit_app_proto import create_app
 import os
 import load_data
 import pandas as pd
@@ -15,6 +15,7 @@ FIELDS_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_
 
 # field data
 DATA_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_data_year_or_year_test.csv'
+
 
 # naming the geojson column
 GEOM_COL = "geometry_wkt"
@@ -56,13 +57,26 @@ def main():
 
     pairs_table = get_pairs(fields_gdf, data_version)
     # print(pairs_table)
-
+        
     field_map = get_map(fields_gdf, data_version)
 
-    streamlit_app_proto.create_app(pairs_table, fields_gdf, samples_gdf)
+    def home():
+        create_app(pairs_table, fields_gdf, field_map)
+
+    st.sidebar.write("Flag when building pages:", st.session_state.get("matches_saved"))
+    pages = [st.Page(home, title="Home", icon="🏠", default=True)]
+    if st.session_state.get("matches_saved"):
+        pages.append(st.Page("analysis_page.py", title="Analysis", icon="📊"))
+        print("Len pages list", pages)
+    # st.sidebar.write("Pages:", [p.title for p in pages])
+
+    pg = st.navigation(pages)
+    pg.run()
+
+    # streamlit_app_proto.create_app(pairs_table, fields_gdf, field_map)
 
     farm_wkt = get_SSURGO_data.farm_boundary_wkt(fields_gdf)
-    
+
     try:
         ssurgo_polys, ssurgo_horizons = get_ssurgo(farm_wkt)
     except get_SSURGO_data.SDAError as e:
@@ -73,3 +87,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# need a function where it takes in fields_gdf and matches
+# get back only the fields that are not ignored
