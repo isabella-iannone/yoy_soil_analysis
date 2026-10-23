@@ -1,93 +1,82 @@
-# Creating an html that will allow for year over year to be calcualted
+# Creating a folium map
 
-# importing libraries
-# import pandas as pd
 import folium
 from folium.plugins import TreeLayerControl
-import json
 from folium.plugins.pattern import StripePattern
-import branca.colormap as cm
+# import branca.colormap as cm
 
 
-def create_map(camp_fields):
+TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+TILES_ATTR = "Tiles &copy; Esri"
+
+PALETTE = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
+            "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4"]
+
+STRIPE_ANGLES = [45, -45, 0, 90, 30, -30, 60, -60, 15, -15]
+
+
+def _campaign_style(i, m):
     # creating the map
-    # map tiles that are being used
-    m = folium.Map(tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                attr="Tiles &copy; Esri")
+
+    color = PALETTE[i % len(PALETTE)]
+    striped = i % 2 == 1
+
+    if striped:
+        pattern = StripePattern(angle=STRIPE_ANGLES[i%len(STRIPE_ANGLES)], color=color, weight=2, space_weight=6, opacity=0.9, space_opacity=0)
+
+        pattern.add_to(m)
+        fill = {"fillPattern": pattern, "fillOpacity": 1.0}
+        swatch_bg = f"repeating-linear-gradient(45deg,{color} 0 2px,transparent 2px 6px)"
+    else:
+        fill = {"fillColor": color, "fillOpacity": 0.3}
+        swatch_bg = color
+ 
+    style = {"color": color, "weight": 2 if striped else 5,
+             "dashArray": "8 4" if striped else None, **fill}
+    border = "dashed" if striped else "solid"
+    swatch = (f'<span style="display:inline-block;width:14px;height:14px;margin-right:6px;'
+              f'border:2px {border} {color};background:{swatch_bg}"></span>')
+    return style, swatch
+
+def create_map(fields_gdf):
+    # map for every field and grouped by campaign in a legend
+
+    if fields_gdf.empty:
+        raise ValueError("create_map received no fields")
+ 
+    m = folium.Map(tiles=TILES, attr=TILES_ATTR)
+    # Remove the outline browsers draw around a clicked polygon
     m.get_root().header.add_child(folium.Element(
         "<style>.leaflet-interactive:focus { outline: none; }</style>"
     ))
-
-    dashes = [None, "8 4", "2 4", "12 4 2 4", "1 6"]
-    angles = [45, -45, 0, 90, 30, -30, 60, -60, 15, -15]
-
-
-
-
-    # palette to use for the map
-    palette = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
-            "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4"]
-
-
-    # legend information
+ 
     tree = {"label": "Campaigns", "select_all_checkbox": True, "children": []}
-    all_bounds = []
-
-    # loop through the campaign ids and group
-    for i, (campaign_id, group) in enumerate(camp_fields.groupby("campaign_id")):
-        # goes to the first row in the campaign
+ 
+    for i, (_, group) in enumerate(fields_gdf.groupby("campaign_id")):
         campaign_name = group["campaign_name"].iloc[0]
-        # select color for campaign from palette
-            # if more campaign than colors will start back at the begining of the palette
-        color = palette[i % len(palette)]
-        striped = i % 2 == 1
-        dash = "8 4" if striped else None
-        if striped:
-            pattern = StripePattern(angle=angles[i % len(angles)], color=color, weight=2, space_weight=6, opacity=0.9, space_opacity=0)
-            pattern.add_to(m)
-            fill = {"fillPattern": pattern, "fillOpacity": 1.0}
-            swatch_bg = f"repeating-linear-gradient(45deg,{color} 0 2px,transparent 2px 6px)"
-        else:
-            fill = {"fillColor": color, "fillOpacity": 0.3}
-            swatch_bg = color
-        style = {"color": color, "weight": 2 if striped else 5, "dashArray": dash, **fill}
-        border = "dashed" if striped else "solid"
-        swatch = f'<span style="display:inline-block;width:14px;height:14px;margin-right:6px;border:2px {border} {color};background:{swatch_bg}"></span>'
-
-        # Color box, checkbox, start with campaigns folded, and adds the fields as the children for each campaign
-        campaign_node = {"label": f"{swatch}{campaign_name}", "select_all_checkbox": True, "collapsed": True, "children": []}
-
-        # inside the first loop 
-            # loops through each field in the campaign
+        style, swatch = _campaign_style(i, m)
+ 
+        # Campaign starts folded; its fields are the children
+        campaign_node = {"label": f"{swatch}{campaign_name}", "select_all_checkbox": True,
+                         "collapsed": True, "children": []}
+ 
         for _, f in group.iterrows():
-            # getting the GeoJson that was provided from the SQL query
             shape = folium.GeoJson(
-                json.loads(f["geometry_geojson"]),
-                # labels the polygon with the field name
+                f.geometry.__geo_interface__,
                 name=f["field_name"],
-                # styling of the polygon
                 style_function=lambda x, s=style: dict(s),
-                # shows the name of the field when it is hovered over 
                 tooltip=f"{f['field_name']} ({campaign_name})",
-                # all this is than added to the map
             ).add_to(m)
-            # adds the field to the correct campaign
             campaign_node["children"].append({"label": str(f["field_name"]), "layer": shape})
-            # gets the corner of the fields, allows for the zoom to be set correctly
-            all_bounds.extend(shape.get_bounds())
-        # once all fields are done for the campaign it is added to the main tree
+ 
         tree["children"].append(campaign_node)
-
-    # adds the collapsed legend to the map 
+ 
     TreeLayerControl(overlay_tree=tree, collapsed=False).add_to(m)
-
-    # zoom to the fit of the fields
-    lats = [b[0] for b in all_bounds]
-    lons = [b[1] for b in all_bounds]
-    m.fit_bounds([[min(lats), min(lons)], [max(lats), max(lons)]])   # zoom to fit all fields
-
-    print(type(m))
-
+ 
+    # Zoom to fit every field
+    minx, miny, maxx, maxy = fields_gdf.total_bounds
+    m.fit_bounds([[miny, minx], [maxy, maxx]])
+ 
     return m
 
 

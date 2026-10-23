@@ -1,47 +1,65 @@
 # Main function for year over year analysis
 import sys
 import iou_calculations
-# import map_vis
+import map_vis
 import streamlit_app_proto
 import os
+import load_data
 import pandas as pd
 import streamlit as st
 from shapely.geometry import Polygon
+# import get_SSURGO_data
 
-#  geojson data
+# geojson data
 FIELDS_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_year_test.csv'
 
 # field data
 DATA_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_data_year_or_year_test.csv'
 
+# naming the geojson column
+GEOM_COL = "geometry_wkt"
 
+# first streamlit call to setup the app
 st.set_page_config(page_title="Year over year field matching", layout="wide")
 
 # cache setup
 # only re-run when there are changes made
 @st.cache_data
-def load_data(fields_path, data_path): 
-    camp_fields = pd.read_csv(fields_path)
-    camp_data = pd.read_csv(data_path)
-    return camp_fields, camp_data
+def load_inputs(fields_path, data_path, data_version): 
+    return load_data.load_all(fields_path, data_path, geom_col=GEOM_COL)
 
 @st.cache_data
-def get_pairs(camp_fields):
-    return iou_calculations.iou_calc(camp_fields)
+def get_pairs(_fields_gdf, data_version):
+    return iou_calculations.iou_calc(_fields_gdf)
+
+@st.cache_resource
+def get_map(_fields_gdf, data_version):
+    return map_vis.create_map(_fields_gdf)
+
+# @st.cache_data
+# def get_SSURGO_data(farm_wkt, fields):
+#     polys = get_SSURGO_data.get_polygons(farm_wkt)
+#     horizons = get_SSURGO_data.get_horizons(polys["mukey"].unique())
+#     return get_SSURGO_data.build_layer(polys, horizons, fields)
 
 
 
 def main():
     print("Main function")
-    # Getting the pairs table
 
-    camp_fields, camp_data = load_data(FIELDS_PATH, DATA_PATH)
-    pairs_table = get_pairs(camp_fields)
-    print(pairs_table)
+    data_version = (os.path.getatime(FIELDS_PATH), os.path.getatime(DATA_PATH))
 
-    # field_map = map_vis.create_map(camp_fields)
+    # load the data once
+    fields_gdf, samples_gdf = load_inputs(FIELDS_PATH, DATA_PATH, data_version)
+    print(f"{len(fields_gdf)} fields, {len(samples_gdf)} samples loaded")
 
-    streamlit_app_proto.create_app(pairs_table, camp_fields, camp_data)
+
+    pairs_table = get_pairs(fields_gdf, data_version)
+    # print(pairs_table)
+
+    field_map = get_map(fields_gdf, data_version)
+
+    streamlit_app_proto.create_app(pairs_table, fields_gdf, samples_gdf)
 
 
 if __name__ == "__main__":
