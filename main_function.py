@@ -8,7 +8,7 @@ import load_data
 import pandas as pd
 import streamlit as st
 from shapely.geometry import Polygon
-# import get_SSURGO_data
+import get_SSURGO_data
 
 # geojson data
 FIELDS_PATH = r'C:\Users\isabe\year_or_year_testing_info\field_polygons_year_or_year_test.csv'
@@ -36,11 +36,11 @@ def get_pairs(_fields_gdf, data_version):
 def get_map(_fields_gdf, data_version):
     return map_vis.create_map(_fields_gdf)
 
-# @st.cache_data
-# def get_SSURGO_data(farm_wkt, fields):
-#     polys = get_SSURGO_data.get_polygons(farm_wkt)
-#     horizons = get_SSURGO_data.get_horizons(polys["mukey"].unique())
-#     return get_SSURGO_data.build_layer(polys, horizons, fields)
+@st.cache_data(ttl="30d", show_spinner="Downloading SSURGO soils...")
+def get_ssurgo(farm_wkt):
+    polys = get_SSURGO_data.get_polygons(farm_wkt)
+    horizons = get_SSURGO_data.get_horizons(polys["mukey"].unique())
+    return polys, horizons
 
 
 
@@ -60,6 +60,15 @@ def main():
     field_map = get_map(fields_gdf, data_version)
 
     streamlit_app_proto.create_app(pairs_table, fields_gdf, samples_gdf)
+
+    farm_wkt = get_SSURGO_data.farm_boundary_wkt(fields_gdf)
+    
+    try:
+        ssurgo_polys, ssurgo_horizons = get_ssurgo(farm_wkt)
+    except get_SSURGO_data.SDAError as e:
+        print(f"SSURGO unavailable: {e}")   # terminal only
+        ssurgo_polys = ssurgo_horizons = None
+
 
 
 if __name__ == "__main__":
