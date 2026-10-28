@@ -35,10 +35,23 @@ def summary_table(matches, fields_gdf):
     return (matched_fields.groupby(["campaign_id", "campaign_name"]).agg(fields=("field_id", "nunique"), total_acres=("acres_entered", "sum"), total_sampled=("n_pts", "sum")))
 
 def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
+    # Keep only fields that appear in matches (ignored rows are already removed)
+    keep = set(zip(matches["campaign_id"].astype(str), matches["field_id"].astype(str)))
+    fields_gdf = fields_gdf[
+        [(str(c), str(f)) in keep
+         for c, f in zip(fields_gdf["campaign_id"], fields_gdf["field_id"])]
+    ]
+    campaign_ids = sorted(matches["campaign_id"].unique())
+
+
     campaign_ids = sorted(matches["campaign_id"].unique())
     names = dict(zip(fields_gdf["campaign_id"], fields_gdf["campaign_name"]))
 
-    cols = st.columns(len(campaign_ids))
+
+    vals = samples_gdf["total_carbon_pct"].dropna()
+    vmin, vmax = vals.min(), vals.max()
+
+    cols = st.columns(len(campaign_ids)+1)
     for col, cid in zip(cols, campaign_ids):
         with col:
             st.markdown(f"**{names.get(cid, cid)}**")
@@ -50,9 +63,23 @@ def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
                 fields_gdf[fields_gdf["campaign_id"] == cid],
                 matches[matches["campaign_id"] == cid],
                 ssurgo_polys,
+                vmin,
+                vmax,
             )
             st_folium(m, height=450, key=f"heat_map_{cid}", returned_objects=[])
-    return m
+
+    if len(campaign_ids) >= 2:
+        base, latest = campaign_ids[0], campaign_ids[-1]
+        with cols[-1]:
+            st.markdown(f"**Change: {names.get(base, base)} → {names.get(latest, latest)}**")
+            m = map_vis.create_change_map(
+                samples_gdf[samples_gdf["organization_campaign_id"] == base],
+                samples_gdf[samples_gdf["organization_campaign_id"] == latest],
+                fields_gdf[fields_gdf["campaign_id"] == base],
+                fields_gdf[fields_gdf["campaign_id"] == latest],
+            )
+            st_folium(m, height=450, key="change_map", returned_objects=[])
+    
 
 
 

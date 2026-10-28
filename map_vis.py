@@ -7,8 +7,14 @@ import branca.colormap as cm
 import geopandas as gpd
 from folium import Element
 from load_data import to_gdf
+from branca.colormap import LinearColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from scipy.spatial import cKDTree
+import shapely
+import pandas as pd
+import numpy as np
 
-from folium.plugins import HeatMap
+# from folium.plugins import HeatMap
 # import streamlit as st
 
 
@@ -20,6 +26,11 @@ PALETTE = ["#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
 
 STRIPE_ANGLES = [45, -45, 0, 90, 30, -30, 60, -60, 15, -15]
 
+CARBON_COLORS = ["#1414ff", "#5ff5f5", "#f5f550", "#f04a1e"]  # blue -> cyan -> yellow -> red
+CARBON_CMAP = LinearSegmentedColormap.from_list("carbon", CARBON_COLORS)
+
+CHANGE_COLORS = ["#d7191c", "#fdae61", "#ffffbf", "#a6d96a", "#1a9641"]  # loss -> no change -> gain
+CHANGE_CMAP = LinearSegmentedColormap.from_list("change", CHANGE_COLORS)
 
 def _campaign_style(i, m):
     # creating the map
@@ -97,7 +108,7 @@ def create_map(fields_gdf):
     return m
 
 # need only the matches w/out ignore as well as the SSURGO information
-def create_heat_map(samples, fields, matches, SSURGO):
+def create_heat_map(samples, fields, matches, SSURGO, vmin, vmax):
     # samples_gdf = st.session_state.get("samples_gdf")
     # fields_gdf = st.session_state.get("fields_gdf")
     # ssurgo_polys = st.session_state.get("ssurgo_polys")
@@ -131,13 +142,13 @@ def create_heat_map(samples, fields, matches, SSURGO):
     n = folium.Map(tiles=TILES, attr=TILES_ATTR)
     # get the SSURGO data that is correlated with these points 
 
-    if SSURGO is not None:
-        folium.GeoJson(
-            SSURGO.to_crs(epsg=4326)[["mukey", "geometry"]],
-            name="SSURGO soils",
-            style_function=lambda f: {"color": "#8B4513", "weight": 1, "fillOpacity": 0.1},
-            tooltip=folium.GeoJsonTooltip(["mukey"]),
-        ).add_to(n)
+    # if SSURGO is not None:
+    #     folium.GeoJson(
+    #         SSURGO.to_crs(epsg=4326)[["mukey", "geometry"]],
+    #         name="SSURGO soils",
+    #         style_function=lambda f: {"color": "#8B4513", "weight": 1, "fillOpacity": 0.1},
+    #         tooltip=folium.GeoJsonTooltip(["mukey"]),
+    #     ).add_to(n)
 
     # Matched field boundaries
     folium.GeoJson(
@@ -161,9 +172,130 @@ def create_heat_map(samples, fields, matches, SSURGO):
     else:
         data = samples[["latitude", "longitude"]].dropna().values.tolist()
 
-    HeatMap(data, name="Samples", radius=15).add_to(n)
-
-    folium.LayerControl().add_to(n)
+    add_idw_layer(n, samples, fields, "total_carbon_pct", vmin, vmax)
     minx, miny, maxx, maxy = fields.total_bounds
     n.fit_bounds([[miny, minx], [maxy, maxx]])
     return n
+
+def idw(x, y, z, gx, gy, power=2, k=12):
+    """Estimate values at grid points from the k nearest samples."""
+    k = min(k, len(z))
+    d, idx = cKDTree(np.column_stack([x, y])).query(
+        np.column_stack([gx.ravel(), gy.ravel()]), k=k
+    )
+    if k == 1:
+        d, idx = d[:, None], idx[:, None]
+    w = 1.0 / np.maximum(d, 1e-12) ** power
+    return ((w * z[idx]).sum(axis=1) / w.sum(axis=1)).reshape(gx.shape)
+
+def add_idw_layer(m, samples, fields, value_col, vmin, vmax,
+                  cells=250, name="Total Carbon (%)"):
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    pts = samples[samples[value_col].notna()]
+    pts = pts.set_geometry(pts.geometry.representative_point())
+
+    layer = folium.FeatureGroup(name=name)
+    for geom in fields.geometry:
+        # Only use samples inside this field so values don't bleed between fields
+        inside = pts[pts.within(geom.buffer(1e-5))]
+        if inside.empty:
+            continue
+
+        minx, miny, maxx, maxy = geom.bounds
+        coslat = np.cos(np.radians((miny + maxy) / 2))  # correct lon/lat distance
+        nx = max(2, int(cells * (maxx - minx) * coslat / (maxy - miny)))
+        gx, gy = np.meshgrid(np.linspace(minx, maxx, nx),
+                             np.linspace(miny, maxy, cells))
+
+        z = idw(inside.geometry.x.values * coslat, inside.geometry.y.values,
+                inside[value_col].astype(float).values, gx * coslat, gy)
+
+        # Clip to the field: blank out every grid cell outside the polygon
+        z[~shapely.contains_xy(geom, gx, gy)] = np.nan
+
+        rgba = CARBON_CMAP(norm(z))
+        rgba[..., 3] = np.where(np.isnan(z), 0, 0.85)  # transparent outside field
+
+        folium.raster_layers.ImageOverlay(
+            image=np.flipud(rgba),               # image rows run north to south
+            bounds=[[miny, minx], [maxy, maxx]],
+            mercator_project=True,
+        ).add_to(layer)
+    layer.add_to(m)
+
+    # Black field outlines on top
+    folium.GeoJson(
+        fields[["geometry"]], name="Fields",
+        style_function=lambda _: {"color": "black", "weight": 2.5, "fill": False},
+    ).add_to(m)
+
+    # Color bar legend
+    LinearColormap(CARBON_COLORS, vmin=vmin, vmax=vmax,
+                   caption=name).add_to(m)
+
+def create_change_map(samples_a, samples_b, fields_a, fields_b,
+                      value_col="total_carbon_pct", cells=250):
+    """Map of (year B - year A), clipped to the area farmed in both years."""
+
+    def prep(s):
+        s = s[s[value_col].notna()]
+        return s.set_geometry(s.geometry.representative_point())
+
+    pts_a, pts_b = prep(samples_a), prep(samples_b)
+
+    # Interpolate both years on a shared grid for each field overlap
+    pieces = []
+    for fa in fields_a.geometry:
+        for fb in fields_b.geometry:
+            overlap = fa.intersection(fb).buffer(0)
+            if overlap.is_empty or overlap.area < 1e-9:
+                continue
+            in_a = pts_a[pts_a.within(fa.buffer(1e-5))]
+            in_b = pts_b[pts_b.within(fb.buffer(1e-5))]
+            if in_a.empty or in_b.empty:
+                continue
+
+            minx, miny, maxx, maxy = overlap.bounds
+            coslat = np.cos(np.radians((miny + maxy) / 2))
+            nx = max(2, int(cells * (maxx - minx) * coslat / (maxy - miny)))
+            gx, gy = np.meshgrid(np.linspace(minx, maxx, nx),
+                                 np.linspace(miny, maxy, cells))
+
+            def surface(p):
+                return idw(p.geometry.x.values * coslat, p.geometry.y.values,
+                           p[value_col].astype(float).values, gx * coslat, gy)
+
+            diff = surface(in_b) - surface(in_a)
+            diff[~shapely.contains_xy(overlap, gx, gy)] = np.nan
+            pieces.append((diff, [[miny, minx], [maxy, maxx]]))
+
+    m = folium.Map(tiles="Esri.WorldImagery")  # match the tiles your other maps use
+
+    # Symmetric scale so "no change" is always the middle color
+    lim = max((np.nanmax(np.abs(d)) for d, _ in pieces), default=0) or 0.1
+    norm = Normalize(vmin=-lim, vmax=lim)
+
+    layer = folium.FeatureGroup(name="Change in Total Carbon")
+    for diff, bounds in pieces:
+        rgba = CHANGE_CMAP(norm(diff))
+        rgba[..., 3] = np.where(np.isnan(diff), 0, 0.85)
+        folium.raster_layers.ImageOverlay(
+            image=np.flipud(rgba), bounds=bounds, mercator_project=True
+        ).add_to(layer)
+    layer.add_to(m)
+
+    # Outlines: baseline dashed white, second year solid black
+    folium.GeoJson(fields_a[["geometry"]], name="Baseline fields",
+                   style_function=lambda _: {"color": "white", "weight": 2,
+                                             "dashArray": "6 4", "fill": False}).add_to(m)
+    folium.GeoJson(fields_b[["geometry"]], name="Second-year fields",
+                   style_function=lambda _: {"color": "black", "weight": 2.5,
+                                             "fill": False}).add_to(m)
+
+    LinearColormap(CHANGE_COLORS, vmin=-lim, vmax=lim,
+                   caption="Change in Total Carbon (% points)").add_to(m)
+
+    minx, miny, maxx, maxy = pd.concat([fields_a, fields_b]).total_bounds
+    m.fit_bounds([[miny, minx], [maxy, maxx]])
+    folium.LayerControl().add_to(m)
+    return m
