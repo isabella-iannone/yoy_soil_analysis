@@ -3,7 +3,13 @@
 import folium
 from folium.plugins import TreeLayerControl
 from folium.plugins.pattern import StripePattern
-# import branca.colormap as cm
+import branca.colormap as cm
+import geopandas as gpd
+from folium import Element
+from load_data import to_gdf
+
+from folium.plugins import HeatMap
+# import streamlit as st
 
 
 TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -75,9 +81,89 @@ def create_map(fields_gdf):
  
     # Zoom to fit every field
     minx, miny, maxx, maxy = fields_gdf.total_bounds
+    bounds = [[miny, minx], [maxy, miny]]
     m.fit_bounds([[miny, minx], [maxy, maxx]])
+
+    map_var = m.get_name()
+    m.get_root().script.add_child(Element(f"""
+        function refit() {{
+            {map_var}.invalidateSize();
+            {map_var}.fitBounds({bounds});
+        }}
+        window.addEventListener('load', refit);
+        window.addEventListener('resize', refit);
+    """))
  
     return m
 
+# need only the matches w/out ignore as well as the SSURGO information
+def create_heat_map(samples, fields, matches, SSURGO):
+    # samples_gdf = st.session_state.get("samples_gdf")
+    # fields_gdf = st.session_state.get("fields_gdf")
+    # ssurgo_polys = st.session_state.get("ssurgo_polys")
+    # matches = st.session_state.get("matches")
 
+    # need to get the samples that are not being ignored
+    # TODO need to think of how this logic will change when there are fields that are not perfect
+    # TODO want each campaign to be a different map entirely
+    keys = (
+        matches[["campaign_id", "field_id"]]
+        .drop_duplicates()
+        .rename(columns={
+            "campaign_id": "organization_campaign_id",
+            "field_id": "field_id",
+        })
+    )
 
+    samples = samples.merge(keys, on=["organization_campaign_id", "field_id"])
+    samples = samples.dropna(subset=["latitude", "longitude"])
+
+    field_keys = matches[["campaign_id", "field_id"]].drop_duplicates()
+
+    # get the polygon/geodataframe for the fields using keys
+    fields = fields.merge(field_keys, on=["campaign_id", "field_id"])
+    # print(fields)
+    fields = to_gdf(fields)
+    # get the sample point using keys
+    # samples = samples.merge(keys, on=["organization_campaign_id", "fields_id"])
+    
+
+    n = folium.Map(tiles=TILES, attr=TILES_ATTR)
+    # get the SSURGO data that is correlated with these points 
+
+    if SSURGO is not None:
+        folium.GeoJson(
+            SSURGO.to_crs(epsg=4326)[["mukey", "geometry"]],
+            name="SSURGO soils",
+            style_function=lambda f: {"color": "#8B4513", "weight": 1, "fillOpacity": 0.1},
+            tooltip=folium.GeoJsonTooltip(["mukey"]),
+        ).add_to(n)
+
+    # Matched field boundaries
+    folium.GeoJson(
+        fields[["field_name", "campaign_name", "geometry"]],
+        name="Matched fields",
+        style_function=lambda f: {"color": "#2c7be5", "weight": 2, "fillOpacity": 0},
+        tooltip=folium.GeoJsonTooltip(["field_name", "campaign_name"]),
+    ).add_to(n) 
+
+    scale_max = max(samples["total_carbon_pct"])
+    
+
+    # Sample heat layer: density of samples, or weighted by a sample value
+    # Sample heat layer: density of samples, or weighted by a sample value
+    has_carbon = samples["total_carbon_pct"].notna()
+
+    if has_carbon.any():
+        s = samples[has_carbon].dropna(subset=["latitude", "longitude"])
+        weights = s["total_carbon_pct"] / scale_max if scale_max else s["total_carbon_pct"]
+        data = list(zip(s["latitude"], s["longitude"], weights.astype(float)))
+    else:
+        data = samples[["latitude", "longitude"]].dropna().values.tolist()
+
+    HeatMap(data, name="Samples", radius=15).add_to(n)
+
+    folium.LayerControl().add_to(n)
+    minx, miny, maxx, maxy = fields.total_bounds
+    n.fit_bounds([[miny, minx], [maxy, maxx]])
+    return n

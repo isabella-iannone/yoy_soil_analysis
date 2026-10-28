@@ -1,7 +1,9 @@
 import streamlit as st
 from streamlit_folium import st_folium
+import folium
 import pandas as pd
 from config import MATCHES_PATH 
+import streamlit.components.v1 as components
 # Take in the map that was created in map_vis, pairs of all IOU that are not duplicates, fields list with ID and name together, and data to run analysis on
 def create_app(pairs_table, camp_fields, map):
     st.write("""
@@ -11,8 +13,12 @@ def create_app(pairs_table, camp_fields, map):
 
     # MATCHES_PATH = r'C:\Users\isabe\year_or_year_testing_info\matches.csv'
 
-    st_folium(map, height=500)
-
+    # commenting out buggy map
+    # st_folium(map, height=500)
+    
+    html = map.get_root().render()
+    components.html(html, height=500)
+    
 
     pairs_table = pairs_table.copy()
     pairs_table["field_name_1"] = pairs_table["field_name_1"].astype(str).apply(lambda v: [v])
