@@ -7,7 +7,8 @@ import pandas as pd
 import os
 import map_vis
 import streamlit.components.v1 as components
-# import geopandas as gpd
+import geopandas as gpd
+
 
 # def load_matches():
 #     matches = st.session_state.get("matches")
@@ -25,14 +26,60 @@ st.title("Year Over Year Analysis")
 #     return match_fields
 
 
-def summary_table(matches, fields_gdf):
-    # match_fields = rid_ignore(matches)
-
+def summary_table(matches, fields_gdf, samples_gdf):
     # only the campaign ids that are in the matches are going to be included
+    # need to count the samples taken from the fields and the depth that was specified
+
+    
+    
     matched_fields = fields_gdf.merge(matches[["campaign_id", "field_id"]].drop_duplicates(),
                                       on=["campaign_id", "field_id"], how="inner",)
+    # need to count only the samples that are 0-15 cm and not all the samples
 
-    return (matched_fields.groupby(["campaign_id", "campaign_name"]).agg(fields=("field_id", "nunique"), total_acres=("acres_entered", "sum"), total_sampled=("n_pts", "sum")))
+    print(matched_fields)
+    print(samples_gdf)
+    # dropping the geo column to covert it to a pandas dataframe instead of a geodataframe
+    matched_fields = matched_fields.drop(columns=["geometry_geojson", "geometry"])
+    samples_gdf = samples_gdf.drop(columns=["geometry"])
+    # matched_fields = matched_fields.drop(matched_fields[["geometry_geojson", "geometry"]])
+    # 
+    print("This is the type of matched fields", type(matched_fields))
+
+    campaign_ids = sorted(matches["campaign_id"].unique())
+    totals = {}
+
+    #TODO when 30 is an option change this value
+    spec_depth = 15
+
+    # loop through the samples and if they are in the campaign and depth add to the summary
+    for id in campaign_ids:
+        camp_samples = samples_gdf[samples_gdf["organization_campaign_id"] == id]
+        spec_depth_samples = camp_samples[camp_samples["sample_depth"] == spec_depth]
+        totals[id] = {
+            # TODO when SQL is defined correctly have campaign name in the csv to pull from
+            "Campaign Name": id,
+            "Number of Samples": spec_depth_samples["total_carbon_pct"].count(),
+            "Number of Fields": spec_depth_samples["field_id"].nunique(),
+            "Number of Acres": spec_depth_samples["acres"].sum(),
+        }
+    #TODO need to see how this working
+    totals_df = pd.DataFrame.from_dict(totals, orient="index")
+
+    totals_df.index.name = "campaign_id"
+    totals_df = totals_df.reset_index()
+
+    sum_cols = ["Number of Samples", "Number of Fields", "Number of Acres"]
+
+    total_row = totals_df[sum_cols].sum().to_frame().T
+    total_row["campaign_id"] = "Total"
+
+    totals_df = pd.concat([totals_df, total_row], ignore_index=True)
+    totals_df["campaign_id"] = totals_df["campaign_id"].astype(str)
+
+    return (totals_df)
+
+
+
 
 def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
     # Keep only fields that appear in matches (ignored rows are already removed)
@@ -95,8 +142,47 @@ if matches is None or matches.empty or samples_gdf is None:
 # st.subheader("Matched Fields, got rid of the ignored")
 # rid_ignore(matches)
 
-st.subheader("Summary State of Campaigns")
-st.table(summary_table(matches, fields_gdf))
+st.subheader("Summary State of Campaigns for 0-15 cm")
+# st.table(summary_table(matches, fields_gdf, samples_gdf))
+summary_state = summary_table(matches, fields_gdf, samples_gdf)
+
+new_table = st.data_editor(
+                    summary_state,
+                    # column_config={
+                    #     **config,
+                    #     **change_headers, 
+                    #     "Ignore": st.column_config.SelectboxColumn(
+                    #             "Ignore",
+                    #             help="Select fields to ignore",
+                    #             width= "small",
+                    #             options=["Ignore - Historical", "Ignore - New"],
+                    #     ),
+                    #     "Relationship": st.column_config.SelectboxColumn(
+                    #         "Relationship",
+                    #         help="How the fields are related between campaigns",
+                    #         width="small",
+                    #         options=["1:1", "1:*", "*:1", "*:*"],
+                    #         required=True,
+                    #     ),
+                    #     "field_name_1": st.column_config.MultiselectColumn(
+                    #             f"{pairs_table['campaign_name_1'].iloc[0]}",
+                    #             help="Select one or more fields",
+                    #             options=camp_1_field_options,
+                    #             required=True,
+                    #     ),
+                    #     "field_name_2": st.column_config.MultiselectColumn(
+                    #             f"{pairs_table['campaign_name_2'].iloc[0]}",
+                    #             help="Select one or more fields",
+                    #             options=camp_2_field_options,
+                    #             required=True
+                    #     )
+                       
+                    # },
+                    # disable the editing of certain columns
+                    # disabled= ["iou"],
+                    hide_index=True,
+                )
+
 
 heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys)
 

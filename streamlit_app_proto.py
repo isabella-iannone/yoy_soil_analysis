@@ -39,6 +39,7 @@ def create_app(pairs_table, camp_fields, map):
     hist_rows = camp_fields[camp_fields["campaign_id"] == campaign_id_2]
     camp_2_field_options = hist_rows["field_label"].tolist()
 
+    print("This is the type for pairs table", type(pairs_table))
    
     new_table = st.data_editor(
                     pairs_table,
@@ -130,12 +131,6 @@ def create_app(pairs_table, camp_fields, map):
                      label="Year over Year Analysis of Your Campaigns",
                      icon="📊")
 
-
-
-    # Table with number of samples taken and acres sampled
-        # put in a caveat that this is only looking at the fields that are being included in the yoy analysis
-
-    # Total carbon % heat map ******* need to exclude outliers using the k=3 fence rule
 
 
 
