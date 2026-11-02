@@ -14,8 +14,7 @@ import shapely
 import pandas as pd
 import numpy as np
 
-# from folium.plugins import HeatMap
-# import streamlit as st
+
 
 
 TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -230,8 +229,8 @@ def add_idw_layer(m, samples, fields, value_col, vmin, vmax,
     ).add_to(m)
 
     # Color bar legend
-    LinearColormap(CARBON_COLORS, vmin=vmin, vmax=vmax,
-                   caption=name).add_to(m)
+    # LinearColormap(CARBON_COLORS, vmin=vmin, vmax=vmax,
+    #                caption=name).add_to(m)
 
 def create_change_map(samples_a, samples_b, fields_a, fields_b,
                       value_col="total_carbon_pct", cells=250):
@@ -292,10 +291,20 @@ def create_change_map(samples_a, samples_b, fields_a, fields_b,
                    style_function=lambda _: {"color": "black", "weight": 2.5,
                                              "fill": False}).add_to(m)
 
-    LinearColormap(CHANGE_COLORS, vmin=-lim, vmax=lim,
-                   caption="Change in Total Carbon (% points)").add_to(m)
+    # LinearColormap(CHANGE_COLORS, vmin=-lim, vmax=lim,
+    #                caption="Change in Total Carbon (% points)").add_to(m)
 
     minx, miny, maxx, maxy = pd.concat([fields_a, fields_b]).total_bounds
     m.fit_bounds([[miny, minx], [maxy, maxx]])
     folium.LayerControl().add_to(m)
-    return m
+    return m, lim
+
+def legend_html(vmin, vmax, colors=CARBON_COLORS, caption="Total Carbon (%)", n_ticks=5):
+    gradient = ", ".join(colors)
+    labels = "".join(f"<span>{t:.1f}</span>" for t in np.linspace(vmin, vmax, n_ticks))
+    return f"""
+<div style="font-family:sans-serif; font-size:13px; max-width:500px; margin:4px 0 16px 0;">
+  <div style="height:12px; background:linear-gradient(to right, {gradient}); border:1px solid #999;"></div>
+  <div style="display:flex; justify-content:space-between;">{labels}</div>
+  <div style="text-align:center;">{caption}</div>
+</div>"""

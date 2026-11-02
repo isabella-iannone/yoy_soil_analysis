@@ -114,18 +114,24 @@ def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
                 vmax,
             )
             st_folium(m, height=450, key=f"heat_map_{cid}", returned_objects=[])
+            st.markdown(map_vis.legend_html(vmin, vmax), unsafe_allow_html=True)
 
     if len(campaign_ids) >= 2:
         base, latest = campaign_ids[0], campaign_ids[-1]
         with cols[-1]:
             st.markdown(f"**Change: {names.get(base, base)} → {names.get(latest, latest)}**")
-            m = map_vis.create_change_map(
+            m, lim = map_vis.create_change_map(
                 samples_gdf[samples_gdf["organization_campaign_id"] == base],
                 samples_gdf[samples_gdf["organization_campaign_id"] == latest],
                 fields_gdf[fields_gdf["campaign_id"] == base],
                 fields_gdf[fields_gdf["campaign_id"] == latest],
             )
             st_folium(m, height=450, key="change_map", returned_objects=[])
+            st.markdown(
+                map_vis.legend_html(-lim, lim, colors=map_vis.CHANGE_COLORS,
+                                    caption="Change in Total Carbon (% points)"),
+                unsafe_allow_html=True,
+            )
     
 
 
@@ -148,38 +154,6 @@ summary_state = summary_table(matches, fields_gdf, samples_gdf)
 
 new_table = st.data_editor(
                     summary_state,
-                    # column_config={
-                    #     **config,
-                    #     **change_headers, 
-                    #     "Ignore": st.column_config.SelectboxColumn(
-                    #             "Ignore",
-                    #             help="Select fields to ignore",
-                    #             width= "small",
-                    #             options=["Ignore - Historical", "Ignore - New"],
-                    #     ),
-                    #     "Relationship": st.column_config.SelectboxColumn(
-                    #         "Relationship",
-                    #         help="How the fields are related between campaigns",
-                    #         width="small",
-                    #         options=["1:1", "1:*", "*:1", "*:*"],
-                    #         required=True,
-                    #     ),
-                    #     "field_name_1": st.column_config.MultiselectColumn(
-                    #             f"{pairs_table['campaign_name_1'].iloc[0]}",
-                    #             help="Select one or more fields",
-                    #             options=camp_1_field_options,
-                    #             required=True,
-                    #     ),
-                    #     "field_name_2": st.column_config.MultiselectColumn(
-                    #             f"{pairs_table['campaign_name_2'].iloc[0]}",
-                    #             help="Select one or more fields",
-                    #             options=camp_2_field_options,
-                    #             required=True
-                    #     )
-                       
-                    # },
-                    # disable the editing of certain columns
-                    # disabled= ["iou"],
                     hide_index=True,
                 )
 
