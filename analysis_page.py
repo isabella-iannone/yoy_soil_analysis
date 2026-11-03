@@ -36,8 +36,8 @@ def summary_table(matches, fields_gdf, samples_gdf):
                                       on=["campaign_id", "field_id"], how="inner",)
     # need to count only the samples that are 0-15 cm and not all the samples
 
-    print(matched_fields)
-    print(samples_gdf)
+    print("Matched fields", matched_fields)
+    print("Samples", samples_gdf)
     # dropping the geo column to covert it to a pandas dataframe instead of a geodataframe
     matched_fields = matched_fields.drop(columns=["geometry_geojson", "geometry"])
     samples_gdf = samples_gdf.drop(columns=["geometry"])
@@ -80,7 +80,6 @@ def summary_table(matches, fields_gdf, samples_gdf):
 
 
 
-
 def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
     # Keep only fields that appear in matches (ignored rows are already removed)
     keep = set(zip(matches["campaign_id"].astype(str), matches["field_id"].astype(str)))
@@ -88,53 +87,63 @@ def heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys):
         [(str(c), str(f)) in keep
          for c, f in zip(fields_gdf["campaign_id"], fields_gdf["field_id"])]
     ]
+ 
     campaign_ids = sorted(matches["campaign_id"].unique())
-
-
-    campaign_ids = sorted(matches["campaign_id"].unique())
-    names = dict(zip(fields_gdf["campaign_id"], fields_gdf["campaign_name"]))
-
-
-    vals = samples_gdf["total_carbon_pct"].dropna()
-    vmin, vmax = vals.min(), vals.max()
-
-    cols = st.columns(len(campaign_ids)+1)
+    if not campaign_ids:
+        st.info("No matched fields to map.")
+        return
+ 
+    # Keyed by string so IDs match whether they arrive as int or str
+    names = {str(c): str(n) for c, n in zip(fields_gdf["campaign_id"], fields_gdf["campaign_name"])}
+    label = lambda cid: names.get(str(cid), str(cid))
+ 
+    # One fixed carbon scale for every map
+    vals = samples_gdf["total_carbon_pct"].dropna().astype(float)
+    vmin, vmax = float(vals.min()), float(vals.max())
+ 
+    base, latest = campaign_ids[0], campaign_ids[-1]
+    # TODO when SQL query is finalized change this to campaign_id
+    samples_for = lambda cid: samples_gdf[samples_gdf["organization_campaign_id"] == cid]
+    fields_for = lambda cid: fields_gdf[fields_gdf["campaign_id"] == cid]
+ 
+    cols = st.columns(len(campaign_ids) + (1 if len(campaign_ids) >= 2 else 0))
+ 
     for col, cid in zip(cols, campaign_ids):
         with col:
-            st.markdown(f"**{names.get(cid, cid)}**")
-            print(type(samples_gdf))
-            print(samples_gdf)
+            st.markdown(f"**{label(cid)}**")
             m = map_vis.create_heat_map(
-                # TODO when SQL query is finalized change this to campaign_id
-                samples_gdf[samples_gdf["organization_campaign_id"] == cid],
-                fields_gdf[fields_gdf["campaign_id"] == cid],
+                samples_for(cid),
+                fields_for(cid),
                 matches[matches["campaign_id"] == cid],
                 ssurgo_polys,
                 vmin,
                 vmax,
+                label=label(cid),
+                # Baseline is dashed white, every later campaign solid black,
+                # matching how they appear on the change map
+                style=map_vis.STYLE_A if cid == base else map_vis.STYLE_B,
             )
-            st_folium(m, height=450, key=f"heat_map_{cid}", returned_objects=[])
+            st_folium(m, height=450, use_container_width=True, key=f"heat_map_{cid}", returned_objects=[])
             st.markdown(map_vis.legend_html(vmin, vmax), unsafe_allow_html=True)
-
+ 
     if len(campaign_ids) >= 2:
-        base, latest = campaign_ids[0], campaign_ids[-1]
         with cols[-1]:
-            st.markdown(f"**Change: {names.get(base, base)} → {names.get(latest, latest)}**")
+            st.markdown(f"**Change: {label(base)} → {label(latest)}**")
             m, lim = map_vis.create_change_map(
-                samples_gdf[samples_gdf["organization_campaign_id"] == base],
-                samples_gdf[samples_gdf["organization_campaign_id"] == latest],
-                fields_gdf[fields_gdf["campaign_id"] == base],
-                fields_gdf[fields_gdf["campaign_id"] == latest],
+                samples_for(base),
+                samples_for(latest),
+                fields_for(base),
+                fields_for(latest),
+                SSURGO=ssurgo_polys,
+                label_a=label(base),
+                label_b=label(latest),
             )
-            st_folium(m, height=450, key="change_map", returned_objects=[])
+            st_folium(m, height=450, use_container_width=True, key=f"change_map_{base}_{latest}", returned_objects=[])
             st.markdown(
                 map_vis.legend_html(-lim, lim, colors=map_vis.CHANGE_COLORS,
                                     caption="Change in Total Carbon (% points)"),
                 unsafe_allow_html=True,
             )
-    
-
-
 
 matches = st.session_state["matches"]
 samples_gdf = st.session_state["samples_gdf"]
@@ -148,7 +157,7 @@ if matches is None or matches.empty or samples_gdf is None:
 # st.subheader("Matched Fields, got rid of the ignored")
 # rid_ignore(matches)
 
-st.subheader("Summary State of Campaigns for 0-15 cm")
+st.subheader("Summary Stats of Campaigns for 0-15 cm")
 # st.table(summary_table(matches, fields_gdf, samples_gdf))
 summary_state = summary_table(matches, fields_gdf, samples_gdf)
 
@@ -159,6 +168,26 @@ new_table = st.data_editor(
 
 
 heat_maps(samples_gdf, fields_gdf, matches, ssurgo_polys)
+# TODO need to change when the drop down for the different depths can be picked
+st.caption("Inverse Distance Weighted Interpolation 0-15cm total carbon %", text_alignment="center")
+campaign_ids = sorted(matches["campaign_id"].unique())
+org_name = samples_gdf["organization"].unique()[0]
+st.subheader("Executive Summary Stats")
+st.markdown(
+    # TODO when the SQL query is updated change this to be campaign names instead of IDs
+    f"The contents of this report provides an analysis of total carbon measured across {campaign_ids[0]} and {campaign_ids[1]}. The object of this study is to see how total carbon has changed over (subtract the dates of when these samples were taken)."
+    # TODO need to get the number of samples that were taken
+    f" {org_name} undertook a soil sampling campaign, collecting soil samples from locations, at depths of 0-15cm, and 15-30cm for total of samples. Samples were tested in a lab for total carbon."
+    # TODO need to calculate percentages and averages with total carbon
+    f" Results indicate that total soil carbon content ranged from "
+    f" Using the Soil Survey Geographic Database (SSURGO) to estimate bulk density on the farm, carbon stocks were calculated for {org_name} [1]."
+    # TODO need to get values with averages of C/acre
+    f" Carbon stock estimates ranged from "
+)
+
+
+# def shapiro_wilkTest():
+
 
 
 
