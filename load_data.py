@@ -61,7 +61,7 @@ def load_all(fields_path, samples_path, geom_col="geometry"):
     fields_gdf = to_gdf(read_fields_csv(fields_path), geom_col=geom_col)
     samples_gdf = samples_to_gdf(read_data_csv(samples_path))
     # only getting the 0-15 samples
-    samples_gdf = samples_gdf[samples_gdf["sample_depth"] == 15]
+    # samples_gdf = samples_gdf[samples_gdf["sample_depth"] == 15]
     return fields_gdf, samples_gdf
 
 
